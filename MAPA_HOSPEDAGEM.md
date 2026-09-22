@@ -16,7 +16,7 @@ O processo de build ainda precisa reunir uma versão identificada de cada reposi
 | `src/config.ts` | Carrega `.env`; valida `NODE_ENV`, `PORT`, `APP_ORIGIN`, `DATABASE_URL` e `SESSION_SECRET`. | Configurar essas variáveis no painel do Render; adicionar validação dos parâmetros de host, proxy e TLS que forem introduzidos. `APP_ORIGIN` deve ser exatamente a origem HTTPS pública, sem caminho nem barra final. |
 | `src/app.ts` | Cookie `Secure` em produção, mas sem configuração de `trust proxy`. | Configurar confiança somente no proxy/topologia do Render, antes de sessão e limitadores. Verificar reconhecimento de HTTPS e IP do cliente; não habilitar confiança irrestrita. |
 | `src/app.ts` | Atende apenas a API; encerra com resposta 404. | Servir a pasta compilada do frontend depois das rotas `/api` e antes do 404, sem converter erros da API em HTML. Ajustar CSP apenas se necessário aos recursos realmente usados. |
-| `src/db.ts` | Conexão PostgreSQL com pool máximo de 10; TLS não configurado explicitamente. | Usar a conexão Supabase apropriada à rede do Render e TLS com validação do certificado. Dimensionar pool para os limites do projeto. Não usar `rejectUnauthorized: false`. |
+| `src/db.ts` e `src/database-options.ts` | TLS implementado com `DATABASE_SSL_CA_PATH`, certificado CA e verificação obrigatória quando o caminho está configurado. Pool máximo de 10. | No Render, disponibilizar o certificado como arquivo de configuração e definir seu caminho. Dimensionar pool para os limites do projeto. |
 | `compose.yaml` | Banco Docker local, porta `127.0.0.1:5433`, volume persistente. | Manter para desenvolvimento. Produção conecta ao Supabase; não publicar esse banco local na internet. |
 | `scripts/setup-env.mjs` | Gera `.env` com localhost e segredos aleatórios locais. | Manter como ferramenta local. Produção recebe segredos próprios no painel, sem reutilizar nem enviar `.env`. |
 | `package.json` | `dev` usa watcher; `build` gera `dist`; `start` executa servidor compilado. | Publicação usa instalação reproduzível (`npm ci`), build e `npm start`; não executar `npm run dev`. Fixar versão suportada do Node no ambiente. |
@@ -42,9 +42,26 @@ O processo de build ainda precisa reunir uma versão identificada de cada reposi
 | `APP_ORIGIN` | Origem HTTPS pública da aplicação |
 | `PORT` | Porta fornecida pelo Render |
 | `DATABASE_URL` | Segredo de conexão PostgreSQL Supabase |
+| `DATABASE_SSL_CA_PATH` | Caminho do certificado CA; no Render, caminho do arquivo disponibilizado no serviço |
 | `SESSION_SECRET` | Segredo aleatório exclusivo, com pelo menos 64 caracteres |
 
-Host de escuta, confiança de proxy e certificado TLS ainda precisam de implementação/configuração conforme a arquitetura escolhida. Não há nomes de variáveis novos implementados para esses pontos.
+Host de escuta e confiança de proxy ainda precisam de implementação/configuração. O carregamento do certificado TLS já está implementado. Parâmetros SSL na URL não podem substituir a validação explícita do certificado.
+
+## Conexão Supabase preparada
+
+A configuração remota fica em `.env.supabase`, ignorado pelo Git, enquanto `.env` continua apontando para o banco Docker local. O certificado fica em `certs/`, também ignorado. Os comandos abaixo usam explicitamente o arquivo remoto; execute-os na pasta do backend:
+
+```powershell
+npm run supabase:check
+npm run supabase:migrate
+npm run supabase:usuario
+```
+
+`supabase:check` apenas verifica conexão. `supabase:migrate` aplica as migrações ainda não executadas. `supabase:usuario` pede os dados do primeiro usuário pelo terminal; só funciona enquanto não houver usuário. A configuração remota administrativa não serve para publicar o servidor em produção: no Render, definir `NODE_ENV=production` e a origem HTTPS final.
+
+Nesta preparação, a conexão TLS foi verificada e as migrações `001_catalog.sql`, `002_operations.sql` e `003_usability.sql` foram aplicadas ao schema public inicialmente vazio. A Data API foi confirmada como desativada pelo responsável. Não houve transferência de dados locais nem criação de usuário remoto.
+
+Após redefinir a senha no painel Supabase, atualizar somente a conexão no arquivo privado `.env.supabase` e, quando existir, no ambiente do Render. Não enviar credenciais ao Git. Se a senha contiver caracteres especiais, codificá-los corretamente no componente de senha da URL.
 
 ## Critérios antes da liberação
 

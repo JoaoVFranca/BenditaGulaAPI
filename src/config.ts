@@ -7,6 +7,7 @@ const schema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   APP_ORIGIN: z.url(),
   DATABASE_URL: z.string().min(1),
+  DATABASE_SSL_CA_PATH: z.string().min(1).optional(),
   SESSION_SECRET: z.string().min(64),
 });
 export const config = schema.parse(process.env);

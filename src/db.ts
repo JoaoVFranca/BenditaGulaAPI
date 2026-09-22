@@ -1,7 +1,8 @@
 import pg from "pg";
 import { config } from "./config.js";
+import { databaseOptions } from "./database-options.js";
 export const pool = new pg.Pool({
-  connectionString: config.DATABASE_URL,
+  ...databaseOptions(config.DATABASE_URL, config.DATABASE_SSL_CA_PATH),
   max: 10,
   connectionTimeoutMillis: 5000,
   statement_timeout: 10000,
