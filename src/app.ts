@@ -14,6 +14,7 @@ import { HttpError } from "./errors.js";
 import { businessRouter } from "./business/routes.js";
 import { config } from "./config.js";
 import { pool, transaction } from "./db.js";
+import { serveFrontend } from "./static-site.js";
 import { dummyHash, hashPassword, verifyPassword } from "./password.js";
 import {
   idSchema,
@@ -40,6 +41,9 @@ const cookie = {
 const pageSize = 50;
 export const app = express();
 app.disable("x-powered-by");
+// No Render o serviço recebe tráfego do proxy da plataforma (um salto).
+// Desenvolvimento não confia em cabeçalhos de proxy por padrão.
+if (config.TRUST_PROXY_HOPS) app.set("trust proxy", config.TRUST_PROXY_HOPS);
 app.use(helmet());
 app.use("/api", (_req, res, next) => {
   res.set("Cache-Control", "no-store");
@@ -311,6 +315,8 @@ async function saveProduct(req: Request, res: Response) {
 app.post("/api/produtos", saveProduct);
 app.put("/api/produtos/:id", saveProduct);
 app.use("/api", businessRouter);
+app.use("/api", (_req, _res, next) => next(new HttpError(404, "Recurso não encontrado.")));
+if (config.STATIC_DIR) serveFrontend(app, config.STATIC_DIR);
 app.use((_req, _res, next) =>
   next(new HttpError(404, "Recurso não encontrado.")),
 );

@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: bendita-gula-sig
+    runtime: docker
+    plan: free
+    region: virginia
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: STATIC_DIR
+        value: /app/public
+      - key: DATABASE_SSL_CA_PATH
+        value: /etc/secrets/prod-ca-2021.crt
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
