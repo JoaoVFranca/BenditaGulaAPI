@@ -1,4 +1,5 @@
 import { z } from "zod";
+export const isWholeUnit = (unit: string) => unit === "un" || unit === "fatia";
 export const idSchema = z.uuid();
 const name = z.string().trim().min(2).max(120);
 export const emailSchema = z.email().trim().toLowerCase().max(254);
@@ -31,7 +32,7 @@ export const priceSchema = z
 export const ingredientSchema = z
   .strictObject({
     nome: name,
-    unidade_medida: z.enum(["un", "kg", "L"]),
+    unidade_medida: z.enum(["un", "kg", "L", "fatia"]),
     estoque_minimo: quantitySchema,
     validade_referencia: z.iso.date().nullable(),
     ativo: z.boolean(),
@@ -42,18 +43,19 @@ export const ingredientSchema = z
   })
   .refine(
     (v) =>
-      v.unidade_medida !== "un" || Number.isInteger(Number(v.estoque_minimo)),
+      !isWholeUnit(v.unidade_medida) ||
+      Number.isInteger(Number(v.estoque_minimo)),
     {
       path: ["estoque_minimo"],
-      message: "A unidade un exige quantidade inteira.",
+      message: "Unidades e fatias exigem quantidade inteira.",
     },
   )
   .superRefine((v, ctx) => {
-    if (v.criar_produto && (v.unidade_medida !== "un" || !v.preco_venda))
+    if (v.criar_produto && (!isWholeUnit(v.unidade_medida) || !v.preco_venda))
       ctx.addIssue({
         code: "custom",
         path: ["criar_produto"],
-        message: "A venda direta exige unidade un e preço de venda.",
+        message: "A venda direta exige unidade un ou fatia e preço de venda.",
       });
     if (!v.criar_produto && v.preco_venda !== undefined)
       ctx.addIssue({

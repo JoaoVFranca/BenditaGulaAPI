@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { z } from "zod";
 import { transaction } from "../db.js";
+import { isWholeUnit } from "../validation.js";
 import { HttpError } from "../errors.js";
 import { decimal, lineCents, scaled } from "./decimal.js";
 import {
@@ -68,10 +69,13 @@ async function lockIngredients(
   return new Map(rows.map((i) => [i.id, i]));
 }
 function checkUnit(ingredient: IngredientRow, quantity: string) {
-  if (ingredient.unidade_medida === "un" && scaled(quantity, 3) % 1000n !== 0n)
+  if (
+    isWholeUnit(ingredient.unidade_medida) &&
+    scaled(quantity, 3) % 1000n !== 0n
+  )
     throw new HttpError(
       422,
-      `${ingredient.nome}: informe uma quantidade inteira em un.`,
+      `${ingredient.nome}: informe uma quantidade inteira em ${ingredient.unidade_medida}.`,
     );
 }
 async function requireStock(

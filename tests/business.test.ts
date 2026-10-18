@@ -963,6 +963,135 @@ test("Operações, estoque e caixa no PostgreSQL real", async (t) => {
         assert.equal(next.more, false);
       },
     );
+    await t.test(
+      "Fatias inteiras: cadastro, compra, composição, ajuste, venda e estorno",
+      async () => {
+        const data = {
+          nome: "Queijo fatiado",
+          unidade_medida: "fatia",
+          estoque_minimo: "2",
+          validade_referencia: null,
+          ativo: true,
+          criar_produto: true,
+          preco_venda: "10.00",
+        };
+        await post("/insumos", { ...data, estoque_minimo: "0.5" }).expect(422);
+        const ingredient = (await post("/insumos", data).expect(201)).body;
+        assert.equal(ingredient.unidade_medida, "fatia");
+        assert.ok(ingredient.produto_vinculado_id);
+        await post("/operacoes", buy(ingredient.id, "1.5")).expect(422);
+        await post("/produtos", {
+          nome: "Sanduíche teste",
+          preco: "10.00",
+          ativo: true,
+          composicao: [{ insumo_id: ingredient.id, quantidade: "0.5" }],
+        }).expect(422);
+        const product = (
+          await post("/produtos", {
+            nome: "Sanduíche teste",
+            preco: "10.00",
+            ativo: true,
+            composicao: [{ insumo_id: ingredient.id, quantidade: "2" }],
+          }).expect(201)
+        ).body;
+        const purchase = (
+          await post("/operacoes", buy(ingredient.id, "10", true)).expect(201)
+        ).body.id;
+        const detail = (await get(`/operacoes/${purchase}`).expect(200)).body;
+        assert.equal(detail.itens[0].unidade, "fatia");
+        const adjustment = {
+          chave_idempotencia: randomUUID(),
+          insumo_id: ingredient.id,
+          natureza: "ENTRADA",
+          motivo: "AJUSTE",
+          descricao: "Conferência fatias",
+          quantidade: "0.5",
+        };
+        await post("/estoque/movimentos", adjustment).expect(422);
+        await post("/estoque/movimentos", {
+          ...adjustment,
+          quantidade: "2",
+        }).expect(201);
+        assert.equal(await balance(ingredient.id), "12.000");
+        const sale = (
+          await post("/operacoes", sell(product.id, "2")).expect(201)
+        ).body.id;
+        assert.equal(await balance(ingredient.id), "8.000");
+        await cancel(sale).expect(200);
+        assert.equal(await balance(ingredient.id), "12.000");
+        const directSale = (
+          await post(
+            "/operacoes",
+            sell(ingredient.produto_vinculado_id, "1"),
+          ).expect(201)
+        ).body.id;
+        assert.equal(await balance(ingredient.id), "11.000");
+        await cancel(directSale).expect(200);
+        await assert.rejects(
+          pool.query("UPDATE insumo SET estoque_minimo=0.5 WHERE id=$1", [
+            ingredient.id,
+          ]),
+          { code: "23514" },
+        );
+        await assert.rejects(
+          pool.query(
+            "INSERT INTO movimentacao_estoque(insumo_id,usuario_id,natureza,motivo,descricao,quantidade) VALUES($1,$2,'ENTRADA','AJUSTE','Fração inválida',0.5)",
+            [ingredient.id, userId],
+          ),
+          { code: "23514" },
+        );
+        await assert.rejects(
+          pool.query(
+            "INSERT INTO item_operacao(operacao_id,insumo_id,quantidade,valor_unitario,nome_snapshot,unidade_snapshot,subtotal) VALUES($1,$2,0.5,2,'Fração inválida','fatia',1)",
+            [purchase, ingredient.id],
+          ),
+          { code: "23514" },
+        );
+      },
+    );
+    await t.test(
+      "Eventos do caixa mantêm a origem de compras, vendas e estornos; avulsos não têm origem",
+      async () => {
+        const { ingredient, product } = await catalog();
+        const purchase = (
+          await post("/operacoes", buy(ingredient, "2", true)).expect(201)
+        ).body.id;
+        const sale = (await post("/operacoes", sell(product)).expect(201)).body
+          .id;
+        await cancel(sale).expect(200);
+        await cancel(purchase).expect(200);
+        const standalone = (
+          await post("/financeiro/despesas", expense(true)).expect(201)
+        ).body.id;
+        await pool.query(
+          "UPDATE lancamento_financeiro SET pago_em='2024-03-10T12:00:00Z',cancelado_em=CASE WHEN cancelado_em IS NOT NULL THEN '2024-03-10T13:00:00Z'::timestamptz END WHERE operacao_id=ANY($1::uuid[]) OR id=$2",
+          [[purchase, sale], standalone],
+        );
+        const events = (
+          await get(
+            "/relatorios/caixa/eventos?inicio=2024-03-10&fim=2024-03-10",
+          ).expect(200)
+        ).body.items;
+        assert.equal(events.length, 5);
+        for (const operationId of [purchase, sale]) {
+          const linked = events.filter(
+            (event: { operacao_id: string | null }) =>
+              event.operacao_id === operationId,
+          );
+          assert.equal(linked.length, 2);
+          assert.deepEqual(
+            linked.map((event: { estorno: boolean }) => event.estorno).sort(),
+            [false, true],
+          );
+          await get(`/operacoes/${operationId}`).expect(200);
+        }
+        assert.equal(
+          events.find((event: { id: string }) => event.id === standalone)
+            .operacao_id,
+          null,
+        );
+      },
+    );
   } finally {
     sessionStore.close();
     await pool.end();

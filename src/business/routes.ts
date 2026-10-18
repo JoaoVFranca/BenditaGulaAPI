@@ -220,8 +220,8 @@ businessRouter.post("/financeiro/:id/cancelar", async (req, res) =>
 );
 
 // Pagamentos e estornos são eventos em suas datas reais; cancelar não apaga o caixa passado.
-export const cashEvents = `SELECT id,descricao,tipo,pago_em AS data_hora,CASE WHEN tipo='RECEITA' THEN valor ELSE -valor END AS valor,false AS estorno FROM lancamento_financeiro WHERE pago_em IS NOT NULL
-  UNION ALL SELECT id,descricao,tipo,cancelado_em,CASE WHEN tipo='RECEITA' THEN -valor ELSE valor END,true FROM lancamento_financeiro WHERE pago_em IS NOT NULL AND cancelado_em IS NOT NULL`;
+export const cashEvents = `SELECT id,operacao_id,descricao,tipo,pago_em AS data_hora,CASE WHEN tipo='RECEITA' THEN valor ELSE -valor END AS valor,false AS estorno FROM lancamento_financeiro WHERE pago_em IS NOT NULL
+  UNION ALL SELECT id,operacao_id,descricao,tipo,cancelado_em,CASE WHEN tipo='RECEITA' THEN -valor ELSE valor END,true FROM lancamento_financeiro WHERE pago_em IS NOT NULL AND cancelado_em IS NOT NULL`;
 businessRouter.get("/relatorios/caixa", async (req, res) => {
   const { inicio, fim } = reportSchema.parse(req.query);
   if ((Date.parse(fim) - Date.parse(inicio)) / 86400000 > 365)

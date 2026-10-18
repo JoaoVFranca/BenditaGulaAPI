@@ -18,6 +18,7 @@ import { serveFrontend } from "./static-site.js";
 import { dummyHash, hashPassword, verifyPassword } from "./password.js";
 import {
   idSchema,
+  isWholeUnit,
   ingredientSchema,
   listSchema,
   loginSchema,
@@ -279,12 +280,12 @@ async function saveProduct(req: Request, res: Response) {
           "Produtos ativos devem usar apenas insumos ativos.",
         );
       if (
-        ingredient.unidade_medida === "un" &&
+        isWholeUnit(ingredient.unidade_medida) &&
         !Number.isInteger(Number(item.quantidade))
       )
         throw new HttpError(
           422,
-          "Insumos medidos em un exigem quantidades inteiras.",
+          "Insumos medidos em un ou fatia exigem quantidades inteiras.",
         );
     }
     const saved = id
@@ -315,7 +316,9 @@ async function saveProduct(req: Request, res: Response) {
 app.post("/api/produtos", saveProduct);
 app.put("/api/produtos/:id", saveProduct);
 app.use("/api", businessRouter);
-app.use("/api", (_req, _res, next) => next(new HttpError(404, "Recurso não encontrado.")));
+app.use("/api", (_req, _res, next) =>
+  next(new HttpError(404, "Recurso não encontrado.")),
+);
 if (config.STATIC_DIR) serveFrontend(app, config.STATIC_DIR);
 app.use((_req, _res, next) =>
   next(new HttpError(404, "Recurso não encontrado.")),
